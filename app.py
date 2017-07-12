@@ -43,6 +43,7 @@ def create_app():
 
     from views.auth import auth_view
     from views.users import user_view
+    from views.chat import chat_view
     from models.user import authenticate, identity
 
     jwt.identity_handler(identity)
@@ -52,5 +53,6 @@ def create_app():
     # Register Routes
     app.register_blueprint(auth_view, url_prefix='/api')
     app.register_blueprint(user_view, url_prefix='/api')
+    app.register_blueprint(chat_view, url_prefix='/api')
 
     return app

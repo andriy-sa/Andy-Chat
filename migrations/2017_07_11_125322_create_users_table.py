@@ -8,7 +8,7 @@ class CreateUsersTable(Migration):
         Run the migrations.
         """
         with self.schema.create('users') as table:
-            table.increments('id')
+            table.increments('id').unsigned()
             table.string('email').unique()
             table.string('first_name')
             table.string('last_name')

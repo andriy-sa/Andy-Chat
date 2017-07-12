@@ -1,6 +1,7 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, g
 from forms.user import UserCreateForm
 from models.user import User
+from libraries.authentification import login_required
 
 user_view = Blueprint('user_view', __name__)
 
@@ -21,3 +22,11 @@ def create():
     user.save()
 
     return jsonify(user.serialize()), 200
+
+
+@user_view.route('/user/list', methods=['GET'])
+@login_required()
+def list():
+    users = User.where('id', '!=', g.user['id']).get()
+
+    return jsonify(users.serialize()), 200
