@@ -30,3 +30,13 @@ def list():
     users = User.where('id', '!=', g.user['id']).get()
 
     return jsonify(users.serialize()), 200
+
+
+@user_view.route('/user/<int:id>', methods=['GET'])
+@login_required()
+def user(id):
+    user = User.find(id)
+    if not user:
+        return jsonify({}), 404
+
+    return jsonify(user.serialize()), 200
