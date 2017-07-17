@@ -81,6 +81,11 @@ def rooms():
     ) \
         .add_select(
         db.raw(
+            'IF(rooms.is_group,false,(select u.avatar from room_members as mem join users as u on u.id = mem.user_id where mem.room_id = rooms.id and u.id != %s limit 1)) as avatar' %
+            g.user['id'])
+    ) \
+        .add_select(
+        db.raw(
             '(select count(m.id) from room_members as mem join messages as m on m.room_id = mem.room_id where mem.user_id = %s and mem.room_id = rooms.id and m.id > IF(mem.last_read_message,mem.last_read_message,0)) as unread_messages' %
             g.user['id'])
     ) \

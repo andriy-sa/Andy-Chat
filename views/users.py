@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify, g
 from forms.user import UserCreateForm
 from models.user import User
+from app import jwt
 from libraries.authentification import login_required
 
 user_view = Blueprint('user_view', __name__)
@@ -21,7 +22,9 @@ def create():
     user.password = User.make_password(form.data.get('password'))
     user.save()
 
-    return jsonify(user.serialize()), 200
+    access_token = jwt.jwt_encode_callback(user)
+
+    return jsonify({'user': user.serialize(), 'access_token': access_token.decode('utf-8')}), 200
 
 
 @user_view.route('/user/list', methods=['GET'])
