@@ -22,7 +22,7 @@ def _before_reques():
 def _after_request(response):
     response.headers["Access-Control"] = "*"
     response.headers["Access-Control-Allow-Origin"] = "*"
-    response.headers["Access-Control-Allow-Headers"] = "X-REQUESTED-WITH, CONTENT-TYPE, ACCEPT, Authorization"
+    response.headers["Access-Control-Allow-Headers"] = "X-REQUESTED-WITH, CONTENT-TYPE, ACCEPT, Authorization, authorization"
     response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, HEAD, OPTIONS"
     response.headers["Access-Control-Expose-Headers"] = "CONTENT-TYPE, X-DEPRECATED"
 

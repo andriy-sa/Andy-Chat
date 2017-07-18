@@ -7,7 +7,7 @@ class LastReadMessage(Migration):
 
         with self.schema.table('room_members') as table:
             table.big_integer('last_read_message').unsigned().index().nullable().default(None)
-            table.foreign('last_read_message').references('id').on('messages').on_delete('CASCADE')
+            table.foreign('last_read_message').references('id').on('messages').on_delete('SET NULL')
 
     def down(self):
 

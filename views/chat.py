@@ -4,8 +4,10 @@ from models.room import Room
 from models.room_member import RoomMember
 from models.message import Message
 from models.user import User
-from app import db
+from app import db, socketio
 from underscore import _
+from libraries.authentification import get_jwt_user
+from flask_socketio import join_room, rooms as socket_rooms
 
 chat_view = Blueprint('chat_view', __name__)
 
@@ -63,7 +65,12 @@ def send_message():
 
     RoomMember.where('room_id', room_id).where('user_id', g.user['id']).update(last_read_message=message.id)
 
-    return jsonify({'status': True}), 200
+    message_response = message.serialize()
+    message_response['first_name'] = g.user['first_name']
+    message_response['last_name'] = g.user['last_name']
+    message_response['avatar'] = g.user['avatar']
+
+    return jsonify(message_response), 200
 
 
 @chat_view.route('/chat/rooms', methods=['GET'])
@@ -192,3 +199,31 @@ def leave_room(room_id):
         member.delete()
 
     return jsonify({'message': 'Success'}), 200
+
+
+# Socket events
+@socketio.on('connect')
+def s_connect():
+    g.user = get_jwt_user()
+    if not g.user:
+        return jsonify({}), 403
+
+    # get user rooms
+    my_rooms = RoomMember.select('room_id').where('user_id', g.user['id']).group_by('room_id').get()
+    for room in my_rooms:
+        join_room('room-%s' % room.room_id)
+
+
+@socketio.on('message')
+def s_message(data):
+    rooms = socket_rooms()
+    if 'room_id' in data and 'room-%s' % data['room_id'] in rooms:
+        print(data)
+        print('emit message event')
+        socketio.emit('message', data, room='room-%s' % data['room_id'], skip_sid=request.sid)
+
+
+@socketio.on('select_room')
+def select_room(data):
+    print('test select room!!!')
+    socketio.emit('test', {'fire': 'rest'})
