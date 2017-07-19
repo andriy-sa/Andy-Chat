@@ -10,7 +10,7 @@ from libraries.authentification import get_jwt_user
 from flask_socketio import join_room, rooms as socket_rooms
 
 chat_view = Blueprint('chat_view', __name__)
-
+connected_users = []
 
 @chat_view.route('/chat/message', methods=['POST'])
 @login_required()
@@ -54,6 +54,17 @@ def send_message():
             member2.room_id = room.id
             member2.user_id = g.user['id']
             member2.save()
+
+            #connect exist socket to room
+            clients = _.findWhere(connected_users,{'id':data['to_id']})
+            my_clients = _.findWhere(connected_users,{'id':g.user['id']})
+
+            clients = _.compact(_.union(clients, my_clients))
+            for item in clients:
+                join_room('room-%s' % room.id, sid=item['sid'], namespace='/')
+
+
+
 
         room_id = room.id
 
@@ -154,6 +165,12 @@ def create_room():
             member.room_id = room.id
             member.user_id = id
             member.save()
+
+            clients = _.findWhere(connected_users, {'id': id})
+            if clients and _.isList(clients):
+                for item in clients:
+                    join_room('room-%s' % room.id, sid=item['sid'], namespace='/')
+
         except Exception as e:
             pass
 
@@ -181,7 +198,7 @@ def detach_room_users():
     return jsonify({'message': 'Success'}), 200
 
 
-@chat_view.route('/chat/room/leave/<int:room_id>')
+@chat_view.route('/chat/room/leave/<int:room_id>', methods=['POST'])
 @login_required()
 def leave_room(room_id):
     member = RoomMember.select('room_members.user_id', 'r.user_id as owner_id') \
@@ -201,6 +218,21 @@ def leave_room(room_id):
     return jsonify({'message': 'Success'}), 200
 
 
+@chat_view.route('/chat/update_counter/<int:room_id>', methods=['POST'])
+@login_required()
+def update_counter(room_id):
+    data = request.get_json()
+    if data and 'message_id' in data:
+        try:
+            RoomMember.where('user_id', g.user['id']).where('room_id', room_id).update(last_read_message=data['message_id'])
+        except Exception:
+            return jsonify({'message':'Bad Request'}), 400
+
+    return jsonify({}), 200
+
+
+
+
 # Socket events
 @socketio.on('connect')
 def s_connect():
@@ -212,6 +244,18 @@ def s_connect():
     my_rooms = RoomMember.select('room_id').where('user_id', g.user['id']).group_by('room_id').get()
     for room in my_rooms:
         join_room('room-%s' % room.room_id)
+
+    connected_users.append({
+        'id': g.user['id'],
+        'sid': request.sid
+    })
+
+
+@socketio.on('disconnect')
+def s_disconnect():
+    client = _.findWhere(connected_users, {'sid': request.sid})
+    if client:
+        connected_users.remove(client)
 
 
 @socketio.on('message')
