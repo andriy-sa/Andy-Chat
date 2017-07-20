@@ -3,6 +3,8 @@ from forms.user import UserCreateForm
 from models.user import User
 from app import jwt
 from libraries.authentification import login_required
+from .chat import connected_users
+from underscore import _
 
 user_view = Blueprint('user_view', __name__)
 
@@ -30,9 +32,14 @@ def create():
 @user_view.route('/user/list', methods=['GET'])
 @login_required()
 def list():
-    users = User.where('id', '!=', g.user['id']).get()
+    users = User.where('id', '!=', g.user['id']).get().serialize()
 
-    return jsonify(users.serialize()), 200
+    for user in users:
+        client = _.findWhere(connected_users, {'id': user['id']})
+        user['online'] = True if client else False
+
+
+    return jsonify(users), 200
 
 
 @user_view.route('/user/<int:id>', methods=['GET'])

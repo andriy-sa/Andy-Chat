@@ -56,8 +56,8 @@ def send_message():
             member2.save()
 
             #connect exist socket to room
-            clients = _.findWhere(connected_users,{'id':data['to_id']})
-            my_clients = _.findWhere(connected_users,{'id':g.user['id']})
+            clients = _.where(connected_users,{'id':data['to_id']})
+            my_clients = _.where(connected_users,{'id':g.user['id']})
 
             clients = _.compact(_.union(clients, my_clients))
             for item in clients:
@@ -104,6 +104,11 @@ def rooms():
     ) \
         .add_select(
         db.raw(
+            'IF(rooms.is_group,false,(select u.id from room_members as mem join users as u on u.id = mem.user_id where mem.room_id = rooms.id and u.id != %s limit 1)) as friend_id' %
+            g.user['id'])
+    ) \
+        .add_select(
+        db.raw(
             '(select count(m.id) from room_members as mem join messages as m on m.room_id = mem.room_id where mem.user_id = %s and mem.room_id = rooms.id and m.id > IF(mem.last_read_message,mem.last_read_message,0)) as unread_messages' %
             g.user['id'])
     ) \
@@ -111,9 +116,15 @@ def rooms():
         .where('rm.user_id', g.user['id']) \
         .group_by('rooms.id') \
         .order_by('last_message_date', 'desc') \
-        .get()
+        .get()\
+        .serialize()
 
-    return jsonify(rooms.serialize()), 200
+    for room in rooms:
+        if not room['is_group']:
+            client = _.findWhere(connected_users, {'id': room['friend_id']})
+            room['online'] = True if client else False
+
+    return jsonify(rooms), 200
 
 
 @chat_view.route('/chat/messages/<int:room_id>', methods=['GET'])
@@ -166,7 +177,7 @@ def create_room():
             member.user_id = id
             member.save()
 
-            clients = _.findWhere(connected_users, {'id': id})
+            clients = _.where(connected_users, {'id': id})
             if clients and _.isList(clients):
                 for item in clients:
                     join_room('room-%s' % room.id, sid=item['sid'], namespace='/')
@@ -250,24 +261,29 @@ def s_connect():
         'sid': request.sid
     })
 
+    socketio.emit('user_connect',{'id':g.user['id']})
+
 
 @socketio.on('disconnect')
 def s_disconnect():
     client = _.findWhere(connected_users, {'sid': request.sid})
     if client:
+        user_id = client['id']
         connected_users.remove(client)
+        clients_exist = _.where(connected_users,{'id':user_id})
+        if not clients_exist or not len(clients_exist):
+            socketio.emit('user_disconnect', {'id': user_id})
+
 
 
 @socketio.on('message')
 def s_message(data):
     rooms = socket_rooms()
     if 'room_id' in data and 'room-%s' % data['room_id'] in rooms:
-        print(data)
-        print('emit message event')
         socketio.emit('message', data, room='room-%s' % data['room_id'], skip_sid=request.sid)
 
-
-@socketio.on('select_room')
-def select_room(data):
-    print('test select room!!!')
-    socketio.emit('test', {'fire': 'rest'})
+@socketio.on('user_typing')
+def s_user_typing(data):
+    rooms = socket_rooms()
+    if 'room_id' in data and 'room-%s' % data['room_id'] in rooms:
+        socketio.emit('user_typing', data, room='room-%s' % data['room_id'], skip_sid=request.sid)
