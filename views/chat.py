@@ -157,7 +157,7 @@ def create_room():
     else:
         ids = []
 
-    if 'room_id' in data:
+    if 'room_id' in data and data['room_id']:
         room = Room.where('id', data['room_id']).where('user_id', g.user['id']).first()
         if not room:
             return jsonify({'message': "Unknown Room"}), 400

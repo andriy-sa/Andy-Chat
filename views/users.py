@@ -37,6 +37,7 @@ def list():
     for user in users:
         client = _.findWhere(connected_users, {'id': user['id']})
         user['online'] = True if client else False
+        user['username'] = "%s %s" % (user['first_name'],user['last_name'])
 
 
     return jsonify(users), 200
