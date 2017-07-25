@@ -217,7 +217,7 @@ def create_room():
             pass
 
     if send_update_socket:
-        socketio.emit('update_members',room.serialize(), room='room-%s' % data['room_id'])
+        socketio.emit('update_members',{'room_id': room.id})
 
     return jsonify({'room_id': room.id}), 200
 
