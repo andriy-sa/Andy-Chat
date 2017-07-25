@@ -7,7 +7,7 @@ from models.user import User
 from app import db, socketio
 from underscore import _
 from libraries.authentification import get_jwt_user
-from flask_socketio import join_room, rooms as socket_rooms
+from flask_socketio import join_room, leave_room, close_room, rooms as socket_rooms
 
 chat_view = Blueprint('chat_view', __name__)
 connected_users = []
@@ -134,7 +134,10 @@ def messages(room_id):
     if not room_member:
         return jsonify({'message': "Unknown Room"}), 400
 
-    room = Room.where('id', room_id).with_('members.user').first()
+    room = Room.where('id', room_id).with_('members.user').first().serialize()
+
+    for item in room['members']:
+        item['user']['username'] = '%s %s' % (item['user']['first_name'],item['user']['last_name'])
 
     messages = Message.select('messages.*', 'u.first_name', 'u.last_name', 'u.avatar') \
         .where('room_id', room_id) \
@@ -143,7 +146,7 @@ def messages(room_id):
         .limit(100) \
         .get()
 
-    return jsonify({'room': room.serialize(), 'messages': messages.serialize()}), 200
+    return jsonify({'room': room, 'messages': messages.serialize()}), 200
 
 
 @chat_view.route('/chat/room', methods=['POST'])
@@ -151,25 +154,41 @@ def messages(room_id):
 def create_room():
     data = request.get_json()
 
+    if not 'name' in data or not data['name']:
+        return jsonify({'message': "Room name is required!!!"}), 400
+
     # prepare users ids
     if 'users' in data:
         ids = data['users'] if _.isList(data['users']) else []
     else:
         ids = []
 
+    if 'detach' in data:
+        detach_ids = data['detach'] if _.isList(data['detach']) else []
+    else:
+        detach_ids = []
+
+    if g.user['id'] in detach_ids:
+        detach_ids.remove(g.user['id'])
+
+    send_update_socket = False
     if 'room_id' in data and data['room_id']:
         room = Room.where('id', data['room_id']).where('user_id', g.user['id']).first()
+        send_update_socket = True
         if not room:
             return jsonify({'message': "Unknown Room"}), 400
     else:
         room = Room()
-        room.name = data['name'] if 'name' in data else None
+        room.name = data['name']
         room.user_id = g.user['id']
         room.is_group = True
         room.save()
         ids.append(g.user['id'])
 
     ids = _.uniq(ids)
+    detach_ids = _.uniq(detach_ids)
+
+    #atach users
     for id in ids:
         try:
             member = RoomMember()
@@ -185,28 +204,43 @@ def create_room():
         except Exception as e:
             pass
 
+    #detach user
+    for id in detach_ids:
+        try:
+            RoomMember.where('room_id', room.id).where('user_id', id).delete()
+            clients = _.where(connected_users, {'id': id})
+            if clients and _.isList(clients):
+                for item in clients:
+                    leave_room('room-%s' % room.id, sid=item['sid'], namespace='/')
+
+        except Exception as e:
+            pass
+
+    if send_update_socket:
+        socketio.emit('update_members',room.serialize(), room='room-%s' % data['room_id'])
+
     return jsonify({'room_id': room.id}), 200
 
-
-@chat_view.route('/chat/room/detach', methods=['POST'])
-@login_required()
-def detach_room_users():
-    data = request.get_json()
-    room_id = data['room_id'] if 'room_id' in data else None
-
-    room = Room.where('id', room_id).where('user_id', g.user['id']).first()
-    if not room:
-        return jsonify({'message': "Unknown Room"}), 400
-
-    # prepare users ids
-    if 'users' in data:
-        ids = data['users'] if _.isList(data['users']) else []
-    else:
-        ids = []
-
-    RoomMember.where('room_id', room_id).where('user_id', '!=', g.user['id']).where_in('user_id', ids).delete()
-
-    return jsonify({'message': 'Success'}), 200
+# Depricated Method
+# @chat_view.route('/chat/room/detach', methods=['POST'])
+# @login_required()
+# def detach_room_users():
+#     data = request.get_json()
+#     room_id = data['room_id'] if 'room_id' in data else None
+#
+#     room = Room.where('id', room_id).where('user_id', g.user['id']).first()
+#     if not room:
+#         return jsonify({'message': "Unknown Room"}), 400
+#
+#     # prepare users ids
+#     if 'users' in data:
+#         ids = data['users'] if _.isList(data['users']) else []
+#     else:
+#         ids = []
+#
+#     RoomMember.where('room_id', room_id).where('user_id', '!=', g.user['id']).where_in('user_id', ids).delete()
+#
+#     return jsonify({'message': 'Success'}), 200
 
 
 @chat_view.route('/chat/room/leave/<int:room_id>', methods=['POST'])
