@@ -217,36 +217,15 @@ def create_room():
             pass
 
     if send_update_socket:
-        socketio.emit('update_members',{'room_id': room.id})
+        socketio.emit('update_members',{'room_id': room.id, 'detach':detach_ids}, room='room-%s' % room.id)
 
     return jsonify({'room_id': room.id}), 200
-
-# Depricated Method
-# @chat_view.route('/chat/room/detach', methods=['POST'])
-# @login_required()
-# def detach_room_users():
-#     data = request.get_json()
-#     room_id = data['room_id'] if 'room_id' in data else None
-#
-#     room = Room.where('id', room_id).where('user_id', g.user['id']).first()
-#     if not room:
-#         return jsonify({'message': "Unknown Room"}), 400
-#
-#     # prepare users ids
-#     if 'users' in data:
-#         ids = data['users'] if _.isList(data['users']) else []
-#     else:
-#         ids = []
-#
-#     RoomMember.where('room_id', room_id).where('user_id', '!=', g.user['id']).where_in('user_id', ids).delete()
-#
-#     return jsonify({'message': 'Success'}), 200
 
 
 @chat_view.route('/chat/room/leave/<int:room_id>', methods=['POST'])
 @login_required()
-def leave_room(room_id):
-    member = RoomMember.select('room_members.user_id', 'r.user_id as owner_id') \
+def user_leave_room(room_id):
+    member = RoomMember.select('room_members.id','room_members.user_id', 'r.user_id as owner_id') \
         .join('rooms as r', 'r.id', '=', 'room_members.room_id') \
         .where('room_members.room_id', room_id) \
         .where('room_members.user_id', g.user['id']) \
@@ -257,8 +236,18 @@ def leave_room(room_id):
 
     if member.user_id == member.owner_id:
         Room.where('id', room_id).delete()
+        socketio.emit('close_room', {'room_id': room_id}, room='room-%s' % room_id)
+        close_room(room='room-%s' % room_id, namespace='/')
+
     else:
         member.delete()
+
+        clients = _.where(connected_users, {'id': member.user_id})
+        if clients and _.isList(clients):
+            for item in clients:
+                leave_room('room-%s' % room_id, sid=item['sid'], namespace='/')
+
+        socketio.emit('update_members', {'room_id': room_id, 'detach': []}, room='room-%s' % room_id)
 
     return jsonify({'message': 'Success'}), 200
 
